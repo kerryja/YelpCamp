@@ -31,6 +31,10 @@ const seedDB = async () => {
       image: "https://source.unsplash.com/collection/483251",
       description: "lorem ipsum lorem ipsum lorem ipsum",
       price,
+      geometry: {
+        type: "Point",
+        coordinates: [-113.1331, 47.0202],
+      },
     });
     await campground.save();
   }
