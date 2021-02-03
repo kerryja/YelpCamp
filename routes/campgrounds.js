@@ -1,22 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const wrapAsync = require("../utils/wrapAsync");
-const ExpressError = require("../utils/ExpressError");
 
 const Campground = require("../models/campground");
 
-const { campgroundSchema } = require("../schemas");
-const { isLoggedIn } = require("../middleware");
-
-const validateCampground = (req, res, next) => {
-  const { error } = campgroundSchema.validate(req.body);
-  if (error) {
-    const msg = error.details.map((error) => error.message).join(",");
-    throw new ExpressError(msg, 400);
-  } else {
-    next();
-  }
-};
+const { isLoggedIn, isAuthor, validateCampground } = require("../middleware");
 
 router.get(
   "/",
@@ -36,6 +24,7 @@ router.post(
   validateCampground,
   wrapAsync(async (req, res, next) => {
     const campground = new Campground(req.body.campground);
+    campground.author = req.user._id;
     await campground.save();
     req.flash("success", "Campground created successfully!");
     res.redirect(`campgrounds/${campground._id}`);
@@ -45,9 +34,14 @@ router.post(
 router.get(
   "/:id",
   wrapAsync(async (req, res) => {
-    const campground = await Campground.findById(req.params.id).populate(
-      "reviews"
-    );
+    const campground = await Campground.findById(req.params.id)
+      .populate({
+        path: "reviews",
+        populate: {
+          path: "author",
+        },
+      })
+      .populate("author");
     if (!campground) {
       req.flash("error", "Campground does not exist");
       return res.redirect("/campgrounds");
@@ -59,8 +53,10 @@ router.get(
 router.get(
   "/:id/edit",
   isLoggedIn,
+  isAuthor,
   wrapAsync(async (req, res) => {
-    const campground = await Campground.findById(req.params.id);
+    const { id } = req.params;
+    const campground = await Campground.findById(id);
     if (!campground) {
       req.flash("error", "Campground does not exist");
       return res.redirect("/campgrounds");
@@ -88,7 +84,11 @@ router.delete(
   isLoggedIn,
   wrapAsync(async (req, res) => {
     const { id } = req.params;
-    await Campground.findByIdAndDelete(id);
+    const campground = await Campground.findByIdAndDelete(id);
+    if (!campground.author.equals(req.user._id)) {
+      req.flash("error", "You do not have permission to do that");
+      return res.redirect(`/campgrounds/${id}`);
+    }
     req.flash("success", "Campground deleted successfully");
     res.redirect("/campgrounds");
   })
